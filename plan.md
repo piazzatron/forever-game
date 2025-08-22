@@ -1,5 +1,13 @@
-# File structure
+# Forever-Game
+### TODOS
+- How do handle terminal users? What if two users have the same name?!
+- How does rendering a particular effect work? Where does that happen? What's included in the effect?
 
+### Description
+### High Level Architecture
+### File structure
+
+```
 src/
 - index.ts
     - processAction(action)
@@ -22,30 +30,38 @@ src/
     - router.ts
 - persistence/
     - redis.ts
+```
 
-# TODO: How do handle terminal users? What if two users have the same name?!
-# TODO: how does rendering a particular effect work? Where does that happen? What's included in the effect?
+## Specific Functionality
+### Start up
 
-# Server Code
-## Start up:
+### Transports
 
-## transports
 Really tightly scoped to the functionality of the particular transport
 
 - handleOutgoingAction(action: Action) // receives actions from router.ts, sends out actions via transport
 - handleIncomingMessage(message: string) -> Action // receives message from the underlying transport, processes it into the correct action, hands it off to router.ts
 
-## router.ts
+### router.ts
 - Should have a mapping of transport_name to transport
 - processEffects(effects: Effect[]) 
     Receives effects from engine.ts, looks up the relevant player transports, then hands off to transports to send
 - processAction(action: Action)
     Receives actions from a transport. Looks up the game, and then hands it off to that particular game engine
 
+### Utils
+####  players.ts
+- Has a function to look up active games for the player
+    - findActiveGame(playerId: string) -> GameState | null
+- Has functions to look up a player by various IDs:
+    - lookUpByPhone(number: string) -> Player
+#### game.ts
 
+## Flows
+### Message Received Flow
+What happens when you receive a new message on a transport
+> Generally, all of this should be async and decoupled. I.e. use IEFE
 
-## Message Received Flow
-- Generally, all of this should be async and decoupled. I.e. use IEFE
 - Some transport gets a message
     - It looks up the player by the ID (either phone number, TG handle, etc - depends on the transport) using the correct function from utils/players.ts
     - Once it has the player, it goes and generates the Action (does this work? the action depends on which game you're using tho)
@@ -58,21 +74,17 @@ Really tightly scoped to the functionality of the particular transport
             - It should persist the state, and then send the effects off to the router.ts
             - Router.ts then looks at each effect, looks up the player, and then for each transport the player is using, it goes and hands it off to the transport
 
-# Utils
-- players.ts
-    - Has a function to look up active games for the player
-        - findActiveGame(playerId: string) -> GameState | null
-    - Has functions to look up a player by various IDs:
-        - lookUpByPhone(number: string) -> Player
-- game.ts
 
-# Persistence
+## Persistence / Database Layer
+We're going to use Redis. Because why not.
 
 - Need a map of playerId -> Player 
 - Need a map of gameId -> GameState
 
 
-# Player 
+## Types
+### Player 
+```
 {
     id: PlayerId (string, randomly generated at init?)
     name: string
@@ -80,30 +92,38 @@ Really tightly scoped to the functionality of the particular transport
     telegramId?: string // or whatever the hell we use identify ppl on Telegram
     // etc, for the relevant transports
 }
+```
 
-# Card
+### Card
+```
 {
     suit: "hearts" | "diamonds"...
     rank: number (face cards get a rank to mark comparison easy)
 }
+```
 
-# PlayedCard
+### PlayedCard
+```
 {
     card: Card
     playerId: string
 }
+```
 
-# Deck
+### Deck
+```
 {
     cards: Card[]
 }
+```
 
-# Peshaw Game State
+### Peshaw Game State
 
+```
 {
     game: "peshaw" (string literal)
     gameId: string (randomly generated?)
-    playingState: "waiting" | "activate" | "finished" // Whether we're waiting for players to join, or we're started, or we're finished
+    playingState: "waiting" | "active" | "finished" // Whether we're waiting for players to join, or we're started, or we're finished
 
     roundCardCount: number // How many cards are to be dealt this round
 
@@ -124,11 +144,11 @@ Really tightly scoped to the functionality of the particular transport
     bids: { playerId: PlayerId, bid: number, actual: number }[] // List of bids, actual tricks won, index in array representing turns
     scores: { playerId: PlayerId, score: number }[] // List of scores, index in array represents turns
 }
+```
 
-# Functions
+## Functions
 
 ### Pheshaw Rules
-
 
 function next(current: PeshawGameState, action: Action) -> { next: PeshawGameState, effects: Effect[] } {
     // Validate actions, return effects if needed
@@ -153,7 +173,11 @@ function next(current: PeshawGameState, action: Action) -> { next: PeshawGameSta
 - Should we have a LIMIT for the game length? Probably like, one week?
 
 
-# EffectTypes (just a string Union)
+## Effects
+Effects represent side effects that happen (sending messages) over the course of playing a turn.
+
+### EffectTypes (just a string Union)
+```
 - NotifyBiddingTurnOne // Updates ONE person telling them it's their time to bid
 - NotifySomeoneBidAll // Updates EVERYONE that somebody just bid
 - NotifyPlayingTurnOne // Updates ONE person telling them it's their time to play
@@ -163,11 +187,12 @@ function next(current: PeshawGameState, action: Action) -> { next: PeshawGameSta
 - NotifyRoundFinishedAll // Updates EVERYONE that a round is over, say who made their bid and who failed, give scoring recap
 - NotifyScoringRecapAll
 - NotifyError
+```
 
-# Effects: 
-
+### Effects: 
 
 Basically should be a huge discriminated union
+```
 {
     effect: NotifiyOneBiddingTurn
     gameId 
@@ -217,15 +242,19 @@ Basically should be a huge discriminated union
     error: PlayerError
     playerId
 }
+```
 
+#### Errors
+```
 PlayerError (string union type)
 - OUT_OF_TURN
 - BIDDING_ENDED
 - STILL_BIDDING
 - ILLEGAL_MOVE
 - UNKNOWN_ACTION
+```
 
-# Rendering effects
+## Rendering effects
 
 This section describes how certain effects are rendered into text.
 
@@ -233,25 +262,27 @@ This section describes how certain effects are rendered into text.
 
 It shows text, your hand + trump, and then a diagram of who's bid so far, and then how many are bid out of total cards dealt
 
-"""
+```
 It's your turn to bid!
 
 Your Hand: [3❤️, 4♠️, K♦️　]
 👑: 5♦️
------
-    Dealer
-      ⌄  
 
-Paul, Em, Larry, You, Mary, Gabby
-            2     ^ 
+. . . . . . . . . . . . . . . . . . . .
+.                                     .
+.     Dealer                          .
+.       ⌄                             .
+. Paul, Em, Larry, You, Mary, Gabby   .
+.             2     ^                 .
+. . . . . . . . . . . . . . . . . . . . 
        
 Currently bid: 2 for 5
+```
 
-"""
 
 ### Notify All Someone Bid 
 It shows who just bid, and then the state of the world
-"""
+```
 
 Michael just bid 3! Now It's Mary's turn.
 
@@ -265,7 +296,7 @@ Paul, Em, Larry, Michael, Mary, Gabby
        
 Currently bid: 5 for 5
 
-"""
+```
 
 ### Notify One Your Turn
 It tells you it's your turn, shows you your hand, and shows you what's been played so far.
